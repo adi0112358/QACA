@@ -54,7 +54,7 @@ World model loss rapidly converges while prediction error decreases, demonstrati
 
 Example training curves:
 
-![training curves](plots/training_curves.png)
+![training curves](plots/final_results.png)
 
 ## Running the Project
 
