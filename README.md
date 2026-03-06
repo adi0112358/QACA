@@ -6,7 +6,7 @@ The system demonstrates a model-based learning agent capable of predicting envir
 
 ## Architecture
 
-![training curves](plots/arch_design.png)
+![training curves](plots/arch_design.jpg)
 
 ## Components
 
