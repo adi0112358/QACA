@@ -1,0 +1,22 @@
+import torch
+import torch.nn as nn
+
+
+class ValueModel(nn.Module):
+
+    def __init__(self, state_size=64):
+        super().__init__()
+
+        self.model = nn.Sequential(
+            nn.Linear(state_size,128),
+            nn.ReLU(),
+            nn.Linear(128,64),
+            nn.ReLU(),
+            nn.Linear(64,1)
+        )
+
+    def forward(self,state):
+
+        state = state.view(state.size(0),-1)
+
+        return self.model(state)
