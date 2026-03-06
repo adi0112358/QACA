@@ -6,21 +6,7 @@ The system demonstrates a model-based learning agent capable of predicting envir
 
 ## Architecture
 
-Observation
-    ↓
-State Memory
-    ↓
-World Model
-    ↓
-Prediction Error
-    ↓
-Meta-State Monitoring
-    ↓
-Value Model
-    ↓
-Quantum Planner
-    ↓
-Action
+![training curves](plots/arch_design.png)
 
 ## Components
 
