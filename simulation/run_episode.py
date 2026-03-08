@@ -24,14 +24,19 @@ import numpy as np
 # Environment
 # -------------------------
 
-env = GridWorld(size=5)
-
-# heatmap for prediction error visualization
+env = GridWorld(size=40)
 heatmap = PredictionErrorHeatmap(env.size)
 
 
 # -------------------------
-# Models
+# Swarm Parameters
+# -------------------------
+
+NUM_AGENTS = 20
+
+
+# -------------------------
+# Models (shared)
 # -------------------------
 
 state_model = StateModel()
@@ -39,25 +44,10 @@ world_model = WorldModel()
 value_model = ValueModel()
 meta_model = MetaStateModel()
 
-
-# -------------------------
-# Trainers
-# -------------------------
-
 world_trainer = WorldModelTrainer(world_model)
 value_trainer = ValueTrainer(value_model)
 
-
-# -------------------------
-# Planner
-# -------------------------
-
 planner = QuantumPlanner(world_model, value_model)
-
-
-# -------------------------
-# Replay Buffer
-# -------------------------
 
 buffer = ReplayBuffer()
 
@@ -66,8 +56,8 @@ buffer = ReplayBuffer()
 # Training Parameters
 # -------------------------
 
-episodes = 1000
-max_steps = 50
+episodes = 1
+max_steps = 300
 
 
 # -------------------------
@@ -88,10 +78,9 @@ for episode in range(episodes):
 
     print("\n========== Episode", episode, "==========")
 
-    # exploration decay
     epsilon = max(0.02, 0.3 * (0.990 ** episode))
 
-    state = state_model.init_state()
+    states = [state_model.init_state() for _ in range(NUM_AGENTS)]
 
     obs = env.reset()
     obs = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
@@ -103,149 +92,162 @@ for episode in range(episodes):
 
     while not done and steps < max_steps:
 
-        # ---------------------------------
-        # Action Selection (ε-greedy)
-        # ---------------------------------
+        for i in range(NUM_AGENTS):
 
-        if random.random() < epsilon:
-            action = random.randint(0, 3)
-        else:
-            action = planner.select_action(state)
+            state = states[i]
 
-        action_vec = torch.zeros(1, 4)
-        action_vec[0, action] = 1
+            # ---------------------------------
+            # Action Selection
+            # ---------------------------------
 
+            if random.random() < epsilon:
+                action = random.randint(0, 3)
+            else:
+                action = planner.select_action(state)
 
-        # ---------------------------------
-        # Predict next state
-        # ---------------------------------
-
-        predicted_next_state = world_model(state, action_vec)
+            action_vec = torch.zeros(1, 4)
+            action_vec[0, action] = 1
 
 
-        # ---------------------------------
-        # Environment step
-        # ---------------------------------
+            # ---------------------------------
+            # Predict next state
+            # ---------------------------------
 
-        obs_next, reward, done = env.step(action)
-
-        obs_next = torch.tensor(obs_next, dtype=torch.float32).unsqueeze(0)
+            predicted_next_state = world_model(state, action_vec)
 
 
-        # ---------------------------------
-        # Perturbation experiment
-        # ---------------------------------
+            # ---------------------------------
+            # Environment step
+            # ---------------------------------
 
-        if episode % 200 == 0 and steps == 5:
-            env.goal_pos = [
-                random.randint(0, env.size - 1),
-                random.randint(0, env.size - 1)
-            ]
+            obs_next, reward, done = env.step(action)
+            obs_next = torch.tensor(obs_next, dtype=torch.float32).unsqueeze(0)
 
 
-        # ---------------------------------
-        # Compute true next state
-        # ---------------------------------
+            # ---------------------------------
+            # Compute true next state
+            # ---------------------------------
 
-        next_state = state_model(obs_next, action_vec, state)
-
-
-        # ---------------------------------
-        # Store experience
-        # ---------------------------------
-
-        buffer.push(
-            state.detach(),
-            action_vec.detach(),
-            next_state.detach()
-        )
+            next_state = state_model(obs_next, action_vec, state)
 
 
-        # ---------------------------------
-        # Train World Model
-        # ---------------------------------
+            # ---------------------------------
+            # Store experience
+            # ---------------------------------
 
-        if len(buffer) > 32:
-
-            states, actions, next_states = buffer.sample(32)
-
-            wm_loss = world_trainer.train_step(
-                states,
-                actions,
-                next_states
+            buffer.push(
+                state.detach(),
+                action_vec.detach(),
+                next_state.detach()
             )
 
-            wm_loss_history.append(wm_loss)
 
-            print("World model loss:", wm_loss)
+            # ---------------------------------
+            # Train World Model
+            # ---------------------------------
+
+            if len(buffer) > 128:
+
+                states_batch, actions_batch, next_states_batch = buffer.sample(32)
+
+                wm_loss = world_trainer.train_step(
+                    states_batch,
+                    actions_batch,
+                    next_states_batch
+                )
+
+                wm_loss_history.append(wm_loss)
+
+                print("World model loss:", wm_loss)
+
+
+            # ---------------------------------
+            # Prediction Error
+            # ---------------------------------
+
+            prediction_error = torch.norm(
+                predicted_next_state - next_state
+            )
+
+            error_val = prediction_error.item()
+            prediction_error_history.append(error_val)
+
+            print("Prediction error:", error_val)
+
+
+            # ---------------------------------
+            # Curiosity Reward
+            # ---------------------------------
+
+            lambda_curiosity = 0.05
+            intrinsic_reward = lambda_curiosity * error_val
+
+            reward_total = reward + intrinsic_reward
+
+            print("Intrinsic reward:", intrinsic_reward)
+
+
+            # ---------------------------------
+            # Train Value Model
+            # ---------------------------------
+
+            reward_tensor = torch.tensor([[reward_total]], dtype=torch.float32)
+
+            value_loss = value_trainer.train_step(
+                state.squeeze(0).detach(),
+                reward_tensor,
+                next_state.squeeze(0).detach()
+            )
+
+            print("Value loss:", value_loss)
+
+
+            # ---------------------------------
+            # Meta-State
+            # ---------------------------------
+
+            meta_state = meta_model(
+                state.squeeze(0),
+                error_val
+            )
+
+            print("Meta state:", meta_state.detach().numpy())
+
+
+            # ---------------------------------
+            # Update Heatmap
+            # ---------------------------------
+
+            if hasattr(env, "agentA_pos"):
+                heatmap.update(env.agentA_pos, error_val)
+
+
+            states[i] = next_state
+
+            state_trajectory.append(next_state.squeeze(0).detach().numpy())
+
+            total_reward += reward
 
 
         # ---------------------------------
-        # Train Value Model
+        # Emergent Swarm Coupling
         # ---------------------------------
 
-        reward_tensor = torch.tensor([[reward]], dtype=torch.float32)
+        alpha = 0.01
 
-        value_loss = value_trainer.train_step(
-            state.squeeze(0).detach(),
-            reward_tensor,
-            next_state.squeeze(0).detach()
-        )
+        for i in range(NUM_AGENTS):
 
-        print("Value loss:", value_loss)
+            interaction = torch.zeros_like(states[i])
 
+            for j in range(NUM_AGENTS):
 
-        # ---------------------------------
-        # Prediction Error
-        # ---------------------------------
+                if i != j:
+                    interaction += (states[j] - states[i])
 
-        prediction_error = torch.norm(
-            predicted_next_state - next_state
-        )
+            states[i] = states[i] + alpha * interaction
 
-        error_val = prediction_error.item()
-
-        prediction_error_history.append(error_val)
-
-        print("Prediction error:", error_val)
-
-
-        # ---------------------------------
-        # Update Heatmap
-        # ---------------------------------
-
-        if hasattr(env, "agentA_pos"):
-            heatmap.update(env.agentA_pos, error_val)
-
-
-        # ---------------------------------
-        # Meta-State
-        # ---------------------------------
-
-        meta_state = meta_model(
-            state.squeeze(0),
-            error_val
-        )
-
-        print("Meta state:", meta_state.detach().numpy())
-
-        state_trajectory.append(state.squeeze(0).detach().numpy())
-
-
-        # ---------------------------------
-        # Update state
-        # ---------------------------------
-
-        state = next_state
-        obs = obs_next
-
-        total_reward += reward
 
         env.render()
-
-        print("Reward:", reward)
-        print("Internal state norm:", torch.norm(state).item())
-        print("--------------")
 
         steps += 1
 
@@ -309,8 +311,8 @@ else:
     plt.ylabel("Internal State Value")
 
 plt.title("Internal State Dynamics")
-
 plt.show()
+
 
 # =========================
 # World Model Dream Rollout
@@ -335,10 +337,8 @@ for t in range(dream_steps):
     action_vec = torch.zeros(1,4)
     action_vec[0,action] = 1
 
-    # predicted next state
     pred_state = world_model(state, action_vec)
 
-    # real environment step
     obs_next, reward, done = env.step(action)
     obs_next = torch.tensor(obs_next, dtype=torch.float32).unsqueeze(0)
 
@@ -350,7 +350,6 @@ for t in range(dream_steps):
     state = next_state
 
 
-# compute prediction divergence
 errors = []
 
 for r,p in zip(real_states, pred_states):

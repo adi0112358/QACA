@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 class StateModel(nn.Module):
-    def __init__(self, obs_size=25, action_size=4, state_size=64):
+    def __init__(self, obs_size=1600, action_size=4, state_size=64):
         super().__init__()
 
         self.state_size = state_size
