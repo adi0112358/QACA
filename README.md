@@ -255,7 +255,7 @@ Plotting the trajectory of $s_t$ reveals the stability and boundedness of the le
 
 Example:
 
-![state dynamics](plots/state_dynamics.png)
+![state dynamics](plots/plot3.png)
 
 ---
 
