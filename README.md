@@ -237,7 +237,7 @@ This produces a spatial uncertainty map of the environment.
 
 Example visualization:
 
-![prediction heatmap](plots/error_heatmap.png)
+![prediction heatmap](plots/plot2.png)
 
 ---
 
@@ -279,7 +279,7 @@ This evaluates how far the model can accurately simulate the future.
 
 Example:
 
-![dream rollout](plots/dream_rollout.png)
+![dream rollout](plots/plot4.png)
 
 ---
 
@@ -331,7 +331,7 @@ World model loss rapidly converges while prediction error decreases, demonstrati
 
 Example training curves:
 
-![training curves](plots/final_results.png)
+![training curves](plots/plot1.png)
 
 ## Running the Project
 
