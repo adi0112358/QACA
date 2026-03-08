@@ -1,8 +1,6 @@
 # QACA: Quantum-Assisted Cognitive Agent
 
-QACA is an experimental cognitive agent architecture combining predictive world models, value-based planning, and quantum-assisted trajectory search.
-
-The system demonstrates a model-based learning agent capable of predicting environment dynamics and planning actions using internal simulation.
+QACA explores a model-based cognitive agent architecture that learns a predictive world model of its environment and performs planning through internal simulation over learned dynamics.
 
 ## Mathematical Formulation
 
@@ -217,6 +215,115 @@ Training loop and evaluation.
 - Value-based planning
 - Quantum-inspired trajectory optimization
 - Online training architecture
+  
+
+## Experimental Analysis
+
+The repository also includes several experimental tools for analyzing the behavior of the cognitive agent and the learned world model.
+
+---
+
+### Prediction Error Heatmap
+
+Prediction error is tracked spatially across the environment to reveal regions where the learned world model is uncertain.
+
+For each grid position $(x,y)$ the average prediction error is computed
+
+$$
+U(x,y) = \mathbb{E}[\epsilon_t \mid position=(x,y)]
+$$
+
+This produces a spatial uncertainty map of the environment.
+
+Example visualization:
+
+![prediction heatmap](plots/error_heatmap.png)
+
+---
+
+### Internal State Dynamics
+
+The evolution of the latent state $s_t$ over time is recorded during training.
+
+This produces a dynamical systems view of the agent’s internal representation:
+
+$$
+s_t = f_\theta(o_t, a_{t-1}, s_{t-1})
+$$
+
+Plotting the trajectory of $s_t$ reveals the stability and boundedness of the learned latent space.
+
+Example:
+
+![state dynamics](plots/state_dynamics.png)
+
+---
+
+### World Model Dream Rollout
+
+To evaluate the predictive quality of the learned world model, the agent performs *imagination rollouts*.
+
+Starting from a real state, the agent simulates future states using only the learned dynamics model
+
+$$
+s_{t+1} = g_\phi(s_t, a_t)
+$$
+
+The divergence between predicted and real trajectories is measured
+
+$$
+D_k = \| s^{real}_{t+k} - s^{pred}_{t+k} \|
+$$
+
+This evaluates how far the model can accurately simulate the future.
+
+Example:
+
+![dream rollout](plots/dream_rollout.png)
+
+---
+
+### Environment Perturbations
+
+During training the environment is occasionally perturbed (e.g., goal relocation).
+
+This evaluates the stability of the learned policy under non-stationary dynamics.
+
+The agent must adapt to sudden changes while maintaining a consistent world model.
+
+---
+
+### Multi-Agent Dynamics
+
+The environment supports interacting agents:
+
+- **Agent A**: controlled by the cognitive architecture
+- **Agent B**: autonomous environmental agent
+
+This creates a simple multi-agent dynamical system where the world model must learn transition dynamics influenced by other agents.
+
+The transition function becomes
+
+$$
+s_{t+1} = f_\theta(s_t, a_t, b_t)
+$$
+
+where $b_t$ represents the behavior of the second agent.
+
+---
+
+## Experimental Observations
+
+Across training runs the following behaviors consistently emerge:
+
+- rapid convergence of the world model loss
+- decreasing prediction error over time
+- stable bounded latent state dynamics
+- reliable goal-reaching behavior
+- short-horizon accuracy in imagination rollouts
+
+These observations suggest that the agent successfully learns a predictive model of environment dynamics and uses it for planning.
+
 
 ## Example Training Results
 
@@ -238,7 +345,8 @@ python -m simulation.run_episode
 
 ## Future Work
 
-- larger environments
-- robotics simulation
-- real quantum hardware backends
-- multi-agent environments
+- richer multi-agent environments
+- continuous control tasks
+- hierarchical planning over latent state dynamics
+- integration with real physics simulators
+- evaluation on large-scale simulated environments
