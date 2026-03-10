@@ -1,5 +1,4 @@
 import torch
-import torch.nn as nn
 
 
 class WorldModelTrainer:
@@ -8,7 +7,21 @@ class WorldModelTrainer:
 
         self.model = model
         self.optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-        self.loss_fn = nn.MSELoss()
+
+    # ---------------------------------
+
+    def gaussian_nll(self, target, mu, logvar):
+        """
+        Negative log likelihood for Gaussian prediction
+        """
+
+        var = torch.exp(logvar)
+
+        loss = ((target - mu) ** 2) / (var + 1e-6) + logvar
+
+        return torch.mean(loss)
+
+    # ---------------------------------
 
     def train_step(self, states, actions, next_states):
 
@@ -19,9 +32,11 @@ class WorldModelTrainer:
         states = states.squeeze(1)
         next_states = next_states.squeeze(1)
 
-        predicted = self.model(states, actions)
+        # forward pass
+        mu, logvar = self.model(states, actions)
 
-        loss = self.loss_fn(predicted, next_states)
+        # probabilistic loss
+        loss = self.gaussian_nll(next_states, mu, logvar)
 
         self.optimizer.zero_grad()
         loss.backward()

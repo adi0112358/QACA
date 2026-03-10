@@ -8,8 +8,8 @@ class MPCPlanner:
         self,
         world_model,
         value_model,
-        horizon=5,
-        num_samples=64,
+        horizon=3,
+        num_samples=8,
         uncertainty_weight=0.1
     ):
 
@@ -27,7 +27,6 @@ class MPCPlanner:
     def simulate_trajectory(self, state, actions):
 
         current_state = state
-
         total_cost = 0
 
         for action in actions:
@@ -73,7 +72,6 @@ class MPCPlanner:
             cost = self.simulate_trajectory(state, actions)
 
             if cost < best_cost:
-
                 best_cost = cost
                 best_sequence = actions
 

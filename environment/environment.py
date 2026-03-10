@@ -4,21 +4,46 @@ import random
 
 class GridWorld:
 
-    def __init__(self, size=5):
+    def __init__(self, size=5, obstacle_prob=0.1):
 
         self.size = size
+        self.obstacle_prob = obstacle_prob
+
         self.goal_pos = [size - 1, size - 1]
+
+        # obstacle grid
+        self.obstacles = np.zeros((size, size))
 
         self.reset()
 
     # ---------------------------------
 
+    def generate_obstacles(self):
+
+        self.obstacles = np.zeros((self.size, self.size))
+
+        for i in range(self.size):
+            for j in range(self.size):
+
+                if random.random() < self.obstacle_prob:
+                    self.obstacles[i][j] = 1
+
+        # ensure start and goal are free
+        self.obstacles[0][0] = 0
+        gx, gy = self.goal_pos
+        self.obstacles[gx][gy] = 0
+
+    # ---------------------------------
+
     def reset(self):
+
+        # generate new obstacle layout
+        self.generate_obstacles()
 
         # learning agent
         self.agentA_pos = [0, 0]
 
-        # second agent (environment agent)
+        # second agent
         self.agentB_pos = [self.size - 1, 0]
 
         self.step_count = 0
@@ -39,6 +64,12 @@ class GridWorld:
         grid[bx][by] = 2     # Agent B
         grid[gx][gy] = 3     # Goal
 
+        # mark obstacles
+        for i in range(self.size):
+            for j in range(self.size):
+                if self.obstacles[i][j] == 1:
+                    grid[i][j] = -1
+
         return grid.flatten()
 
     # ---------------------------------
@@ -56,27 +87,29 @@ class GridWorld:
 
         x, y = pos
 
+        new_x, new_y = x, y
+
         if action == 0:  # up
-            x = max(0, x - 1)
+            new_x = max(0, x - 1)
 
         elif action == 1:  # down
-            x = min(self.size - 1, x + 1)
+            new_x = min(self.size - 1, x + 1)
 
         elif action == 2:  # left
-            y = max(0, y - 1)
+            new_y = max(0, y - 1)
 
         elif action == 3:  # right
-            y = min(self.size - 1, y + 1)
+            new_y = min(self.size - 1, y + 1)
 
-        return [x, y]
+        # prevent walking into obstacle
+        if self.obstacles[new_x][new_y] == 1:
+            return pos
+
+        return [new_x, new_y]
 
     # ---------------------------------
 
     def move_agentB(self):
-        """
-        Simple reactive policy for second agent.
-        Moves randomly.
-        """
 
         action = random.randint(0, 3)
         self.agentB_pos = self.move_agent(self.agentB_pos, action)
@@ -84,17 +117,15 @@ class GridWorld:
     # ---------------------------------
 
     def move_goal(self):
-        """
-        Introduce environment perturbation.
-        Goal moves occasionally.
-        """
 
         if self.step_count % 5 == 0:
 
             gx = random.randint(0, self.size - 1)
             gy = random.randint(0, self.size - 1)
 
-            self.goal_pos = [gx, gy]
+            # avoid obstacle cell
+            if self.obstacles[gx][gy] == 0:
+                self.goal_pos = [gx, gy]
 
     # ---------------------------------
 
@@ -107,15 +138,14 @@ class GridWorld:
         # move learning agent
         self.agentA_pos = self.move_agent(self.agentA_pos, action)
 
-        # move environment agent
+        # move second agent
         self.move_agentB()
 
-        # move goal occasionally
+        # dynamic goal
         self.move_goal()
 
         new_distance = self.distance_to_goal()
 
-        # reward shaping
         reward = -0.1 + (old_distance - new_distance)
 
         done = False
@@ -144,6 +174,12 @@ class GridWorld:
         grid[ax][ay] = "A"
         grid[bx][by] = "B"
         grid[gx][gy] = "G"
+
+        for i in range(self.size):
+            for j in range(self.size):
+
+                if self.obstacles[i][j] == 1:
+                    grid[i][j] = "#"
 
         for row in grid:
             print(" ".join(row))

@@ -1,5 +1,7 @@
 import torch
 import random
+import numpy as np
+import matplotlib.pyplot as plt
 
 from environment.environment import GridWorld
 
@@ -8,7 +10,7 @@ from agent.world_model import WorldModel
 from agent.value_model import ValueModel
 from agent.meta_model import MetaStateModel
 
-from quantum.quantum_planner import QuantumPlanner
+from planning.mpc_planner import MPCPlanner
 
 from training.replay_buffer import ReplayBuffer
 from training.trainer import WorldModelTrainer
@@ -16,15 +18,12 @@ from training.value_trainer import ValueTrainer
 
 from utils.heatmap import PredictionErrorHeatmap
 
-import matplotlib.pyplot as plt
-import numpy as np
-
 
 # -------------------------
 # Environment
 # -------------------------
 
-env = GridWorld(size=40)
+env = GridWorld(size=10)
 heatmap = PredictionErrorHeatmap(env.size)
 
 
@@ -32,14 +31,16 @@ heatmap = PredictionErrorHeatmap(env.size)
 # Swarm Parameters
 # -------------------------
 
-NUM_AGENTS = 20
+NUM_AGENTS = 4
 
 
 # -------------------------
-# Models (shared)
+# Models
 # -------------------------
 
-state_model = StateModel()
+obs_size = env.size * env.size
+
+state_model = StateModel(obs_size=obs_size)
 world_model = WorldModel()
 value_model = ValueModel()
 meta_model = MetaStateModel()
@@ -47,7 +48,7 @@ meta_model = MetaStateModel()
 world_trainer = WorldModelTrainer(world_model)
 value_trainer = ValueTrainer(value_model)
 
-planner = QuantumPlanner(world_model, value_model)
+planner = MPCPlanner(world_model, value_model)
 
 buffer = ReplayBuffer()
 
@@ -57,7 +58,7 @@ buffer = ReplayBuffer()
 # -------------------------
 
 episodes = 1
-max_steps = 300
+max_steps = 40
 
 
 # -------------------------
@@ -110,10 +111,13 @@ for episode in range(episodes):
 
 
             # ---------------------------------
-            # Predict next state
+            # Predict next state (world model)
             # ---------------------------------
 
-            predicted_next_state = world_model(state, action_vec)
+            mu, logvar = world_model(state, action_vec)
+
+            predicted_next_state = mu
+            uncertainty = torch.mean(torch.exp(logvar)).item()
 
 
             # ---------------------------------
@@ -121,11 +125,14 @@ for episode in range(episodes):
             # ---------------------------------
 
             obs_next, reward, done = env.step(action)
-            obs_next = torch.tensor(obs_next, dtype=torch.float32).unsqueeze(0)
+
+            obs_next = torch.tensor(
+                obs_next, dtype=torch.float32
+            ).unsqueeze(0)
 
 
             # ---------------------------------
-            # Compute true next state
+            # True next state
             # ---------------------------------
 
             next_state = state_model(obs_next, action_vec, state)
@@ -146,7 +153,7 @@ for episode in range(episodes):
             # Train World Model
             # ---------------------------------
 
-            if len(buffer) > 128:
+            if len(buffer) > 32:
 
                 states_batch, actions_batch, next_states_batch = buffer.sample(32)
 
@@ -170,6 +177,7 @@ for episode in range(episodes):
             )
 
             error_val = prediction_error.item()
+
             prediction_error_history.append(error_val)
 
             print("Prediction error:", error_val)
@@ -180,6 +188,7 @@ for episode in range(episodes):
             # ---------------------------------
 
             lambda_curiosity = 0.05
+
             intrinsic_reward = lambda_curiosity * error_val
 
             reward_total = reward + intrinsic_reward
@@ -191,7 +200,9 @@ for episode in range(episodes):
             # Train Value Model
             # ---------------------------------
 
-            reward_tensor = torch.tensor([[reward_total]], dtype=torch.float32)
+            reward_tensor = torch.tensor(
+                [[reward_total]], dtype=torch.float32
+            )
 
             value_loss = value_trainer.train_step(
                 state.squeeze(0).detach(),
@@ -203,19 +214,20 @@ for episode in range(episodes):
 
 
             # ---------------------------------
-            # Meta-State
+            # Meta-State Monitoring
             # ---------------------------------
 
             meta_state = meta_model(
                 state.squeeze(0),
-                error_val
+                error_val,
+                uncertainty
             )
 
             print("Meta state:", meta_state.detach().numpy())
 
 
             # ---------------------------------
-            # Update Heatmap
+            # Heatmap Update
             # ---------------------------------
 
             if hasattr(env, "agentA_pos"):
@@ -224,13 +236,15 @@ for episode in range(episodes):
 
             states[i] = next_state
 
-            state_trajectory.append(next_state.squeeze(0).detach().numpy())
+            state_trajectory.append(
+                next_state.squeeze(0).detach().numpy()
+            )
 
             total_reward += reward
 
 
         # ---------------------------------
-        # Emergent Swarm Coupling
+        # Swarm Coupling
         # ---------------------------------
 
         alpha = 0.01
@@ -267,20 +281,14 @@ plt.figure(figsize=(15,4))
 plt.subplot(1,3,1)
 plt.plot(reward_history)
 plt.title("Reward per Episode")
-plt.xlabel("Episode")
-plt.ylabel("Reward")
 
 plt.subplot(1,3,2)
 plt.plot(wm_loss_history)
 plt.title("World Model Loss")
-plt.xlabel("Training Step")
-plt.ylabel("Loss")
 
 plt.subplot(1,3,3)
 plt.plot(prediction_error_history)
 plt.title("Prediction Error")
-plt.xlabel("Step")
-plt.ylabel("Error")
 
 plt.tight_layout()
 plt.show()
@@ -303,12 +311,8 @@ plt.figure(figsize=(6,6))
 
 if state_array.shape[1] >= 2:
     plt.plot(state_array[:,0], state_array[:,1], alpha=0.6)
-    plt.xlabel("State Dimension 1")
-    plt.ylabel("State Dimension 2")
 else:
     plt.plot(state_array[:,0])
-    plt.xlabel("Time Step")
-    plt.ylabel("Internal State Value")
 
 plt.title("Internal State Dynamics")
 plt.show()
@@ -327,8 +331,7 @@ state = state_model.init_state()
 obs = env.reset()
 obs = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
 
-real_states = []
-pred_states = []
+errors = []
 
 for t in range(dream_steps):
 
@@ -337,27 +340,23 @@ for t in range(dream_steps):
     action_vec = torch.zeros(1,4)
     action_vec[0,action] = 1
 
-    pred_state = world_model(state, action_vec)
+    mu, logvar = world_model(state, action_vec)
+
+    pred_state = mu
 
     obs_next, reward, done = env.step(action)
-    obs_next = torch.tensor(obs_next, dtype=torch.float32).unsqueeze(0)
+
+    obs_next = torch.tensor(
+        obs_next, dtype=torch.float32
+    ).unsqueeze(0)
 
     next_state = state_model(obs_next, action_vec, state)
 
-    real_states.append(next_state.detach().numpy())
-    pred_states.append(pred_state.detach().numpy())
+    error = torch.norm(pred_state - next_state).item()
+
+    errors.append(error)
 
     state = next_state
-
-
-errors = []
-
-for r,p in zip(real_states, pred_states):
-
-    r = torch.tensor(r)
-    p = torch.tensor(p)
-
-    errors.append(torch.norm(r-p).item())
 
 
 plt.figure()
@@ -365,6 +364,7 @@ plt.figure()
 plt.plot(errors)
 
 plt.title("World Model Dream Rollout Error")
+
 plt.xlabel("Imagination Step")
 plt.ylabel("Prediction Error")
 
