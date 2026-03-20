@@ -1,0 +1,11 @@
+# Example Entropy Programming Language (EPL)
+
+overlay social_reputation eventual;
+overlay quest_order causal;
+overlay scarce_items ordered;
+
+constraint hard error_band: error <= 1.5;
+constraint soft uncertainty_pref: uncertainty <= 1.2 weight=0.5;
+constraint soft state_energy: state_norm <= 4.0 weight=0.3;
+
+budget region_budget: total=1.0 region=10;

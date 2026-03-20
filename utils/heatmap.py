@@ -32,7 +32,7 @@ class PredictionErrorHeatmap:
         return avg_map
 
 
-    def plot(self):
+    def plot(self, save_path=None, show=True):
 
         avg_map = self.get_average_error()
 
@@ -44,4 +44,9 @@ class PredictionErrorHeatmap:
         plt.xlabel("Y")
         plt.ylabel("X")
 
-        plt.show()
+        if save_path:
+            plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        if show:
+            plt.show()
+        else:
+            plt.close()

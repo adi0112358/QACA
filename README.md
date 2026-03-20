@@ -333,6 +333,19 @@ Example training curves:
 
 ![training curves](plots/plot1.png)
 
+## Entropy Engine Integration
+
+The project now includes a governance layer inspired by Entropy Engine:
+
+- **CLF/CBF-QP controller** for safety and stability (with slack/fallback behavior).
+- **Divergence functional + barrier checks** to measure and bound drift.
+- **Dynamic regional complexity budgeting** driven by prediction-error heatmaps.
+- **Mixed consistency overlays** (CRDT-style overlays, ordered commits, causal commits).
+- **EPL (Entropy Programming Language)** parser + runtime, wired into governance.
+- **Hybrid automaton** with mode switching (normal/safe) based on divergence and barrier violations.
+
+EPL examples live in `epl/example.epl`. Headless runs save plots to `plots/runs/`.
+
 ## Running the Project
 
 Install dependencies:

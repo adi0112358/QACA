@@ -21,7 +21,8 @@ class Planner:
             action_vec=torch.zeros(1,4)
             action_vec[0,action]=1
 
-            current_state=self.world_model(current_state,action_vec)
+            mu, logvar = self.world_model(current_state, action_vec)
+            current_state = mu
 
         return current_state
 

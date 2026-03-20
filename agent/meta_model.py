@@ -20,6 +20,21 @@ class MetaStateModel(nn.Module):
 
     # ---------------------------------
 
+    def _to_batch_tensor(self, value, batch, device, dtype):
+
+        if torch.is_tensor(value):
+            value_tensor = value.to(device=device, dtype=dtype)
+            if value_tensor.dim() == 0:
+                value_tensor = value_tensor.view(1, 1).repeat(batch, 1)
+            elif value_tensor.dim() == 1:
+                value_tensor = value_tensor.view(-1, 1)
+        else:
+            value_tensor = torch.full((batch, 1), float(value), device=device, dtype=dtype)
+
+        return value_tensor
+
+    # ---------------------------------
+
     def forward(self, state, prediction_error, uncertainty):
 
         state = state.view(state.size(0), -1)
@@ -27,16 +42,20 @@ class MetaStateModel(nn.Module):
         # state energy
         state_energy = torch.norm(state, dim=1, keepdim=True)
 
-        error_tensor = torch.tensor(
-            [[prediction_error]],
-            dtype=torch.float32,
-            device=state.device
+        batch = state.size(0)
+
+        error_tensor = self._to_batch_tensor(
+            prediction_error,
+            batch,
+            state.device,
+            state.dtype
         )
 
-        uncertainty_tensor = torch.tensor(
-            [[uncertainty]],
-            dtype=torch.float32,
-            device=state.device
+        uncertainty_tensor = self._to_batch_tensor(
+            uncertainty,
+            batch,
+            state.device,
+            state.dtype
         )
 
         x = torch.cat(
